@@ -30,13 +30,20 @@ function findTag(md, tag, obj) {
 
 // Configure section and toc generation
 converter.hooks.set("postConversion", function(text) {
+    var isFirst = true;
     return text.replace(/<(h(\d))>/g, function(match, p1, p2, offset, str) {
         var i, levelStr = "";
+
+        var box = isFirst
+                ? '<div class="bs-docs-section">'
+                : (p2 == 1 ? '</div><div class="bs-docs-section">' : '');
+
+        isFirst = false;
 
         levels[p1] = levels[p1] || 0;
         
         // Figure out section number
-	if (!argv.n) {
+        // if (!argv.n) {
             // reset lower levels
             for (i = Number(p2) + 1; levels["h"+i]; i++) {
                 levels["h"+i] = 0;
@@ -49,7 +56,7 @@ converter.hooks.set("postConversion", function(text) {
         
             levels[p1] = levels[p1] + 1;
             levelStr = levelStr + levels[p1] + ". ";
-        }
+        // }
 
         // Add toc entry
         toc.push({
@@ -58,12 +65,14 @@ converter.hooks.set("postConversion", function(text) {
             title: str.slice(offset+4, str.slice(offset).indexOf("</h")+offset)
         });
 
-        return "<h" + p2 + ' id="' + nextId + '">' + levelStr;
+        return box + "<h" + p2 + ' id="' + nextId + '">' + (!argv.n ? levelStr : '');
     }).
-    replace(/<pre>/g, '<pre class="prettyprint">').
+    replace(/<pre>/g, '<pre class="prettyprint linenums">').
+    // replace(/<\/pre>/g, '</pre></div>').
+    // replace(/<code>/g, '<code>').
     replace(/".*mailto%3a(.*)"/, function(match, p1) {
         return "\"mailto:" + p1  + "\"";
-    });
+    }) + '</div>';
 });
 
 // Create output directory
@@ -94,27 +103,78 @@ argv._.forEach(function(md_path) {
     output = converter.makeHtml(md);
 
     // Add table of contents
-    tocHtml += '<div class="span3 bs-docs-sidebar"><ul class="nav nav-list bs-docs-sidenav" data-spy="affix">';
+    tocHtml += [
+        '<div class="col-md-3">',
+            '<div class="bs-docs-sidebar hidden-print hidden-xs hidden-sm" data-spy="affix" data-offset-top="80" data-offset-bottom="125" role="complementary">',
+            '<ul class="nav bs-docs-sidenav">'
+    ].join('');
+
+    var lastIsHead1 = true;
     toc.forEach(function(entry) {
-        tocHtml += '<li><a href="#' + entry.id + '">' + entry.levelStr + entry.title + '</a></li>';
+        var isFirst = entry.id == 1;
+        var level = entry.levelStr.split('.').length - 1;
+        var isHead1 = level === 1;
+        var str;
+        if (level > 2) {
+            return;
+        }
+        if (lastIsHead1 === isHead1) {
+            str = (isFirst ? '' : '</li>')
+                + '<li' + (isFirst ? ' class="active"' : '') + '><a href="#' + entry.id + '">'
+                // + entry.levelStr
+                + entry.title + '</a>';
+        }
+        else {
+            if (lastIsHead1) {
+                str = '<ul class="nav">'
+                    + '<li><a href="#' + entry.id + '">'
+                    // + entry.levelStr
+                    + entry.title + '</a>';
+            }
+            else {
+                str = '</ul>'
+                    + '</li>'
+                    + '<li><a href="#' + entry.id + '">'
+                    // + entry.levelStr
+                    + entry.title + '</a>';
+            }
+            lastIsHead1 = isHead1;
+        }
+
+        tocHtml += str;
+
+        // tocHtml += '<li><a href="#' + entry.id + '">' + entry.levelStr + entry.title + '</a>'
+                // + '</li>';
     });
-    tocHtml += '</ul></div><div class="span9">';
+    tocHtml += '</ul>'
+            + '<a class="back-to-top" href="#top">返回顶部</a>'
+            + '</div></div>';
 
     // Bootstrap-fy
-    output = 
+    output =
         top_part.replace(/\{\{header\}\}/, function() {
             if (argv.h) {
-                return '<header class="jumbotron subhead" id="overview">' +
-                       '<div class="container">' +
-                       '<h1>' + tags.title  + '</h1>' +
-                       '<p class="lead">' + tags.subtitle + '</p>' +
-                       '</div></header>';
+                // return '<header class="jumbotron subhead" id="overview">' +
+                //        '<div class="container">' +
+                //        '<h1>' + tags.title  + '</h1>' +
+                //        '<p class="lead">' + tags.subtitle + '</p>' +
+                //        '</div></header>';
+                return [
+                    '<div class="bs-docs-header" id="content">',
+                        '<div class="container">',
+                            '<h1>' + tags.title  + '</h1>',
+                            '<p>' + tags.subtitle + '</p>',
+                        '</div>',
+                    '</div>',
+                ].join('');
             } else {
                 return "";
             }
         }).replace(/\{\{title\}\}/, tags.title === "TITLE HERE" ? "" : tags.title) +
-        tocHtml +
+        '<div class="col-md-9">' +
         output +
+        '</div>' +
+        tocHtml +
         bottom_part;
 
     fs.writeFileSync(output_path, output);
